@@ -1,0 +1,21 @@
+Package: KSLE
+Type: Package
+Title: KSLE algorithm for truncated SVD
+Version: 0.1.0
+Author: Kexin Li
+Maintainer: Kexin Li <likexin@umich.edu>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3
+LinkingTo: 
+    Rcpp
+Imports: 
+    Rcpp,
+    control
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

@@ -1,0 +1,41 @@
+---
+title: "tutorial"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(KSLE)
+```
+
+```{r}
+set.seed(123)
+n = 10  # matrix size
+k = 3    # number of eigenvalues to calculate
+# Some random data
+M = matrix(rnorm(n^2), n)
+# Make it symmetric
+A = crossprod(M)
+```
+
+To use the function `eigen_IRAM` and `eigen_KSLE`:
+```{r}
+result <- eigen_IRAM(A, k)
+result <- eigen_KSLE(A, k)
+```
+
+To use the function `truncatedSVD`:
+```{r}
+result <- truncatedSVD(M, k, method='IRAM')
+result <- truncatedSVD(M, k, method='KSLE')
+```

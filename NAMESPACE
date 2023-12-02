@@ -1,0 +1,7 @@
+
+import(Rcpp)
+importFrom("control", "ordschur")
+# exportPattern("^[[:alpha:]]+")
+export(norm2)
+export(shiftedQR)
+export(eigen_IRAM, eigen_KSLE, truncatedSVD)
