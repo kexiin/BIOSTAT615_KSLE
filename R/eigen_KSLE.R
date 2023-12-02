@@ -99,7 +99,7 @@ Arnoldi_Krylov <- function(U, S, u, b, m, k) {
   return(list(U=U1, S=S1, u=u, b=b1))
 }
 
-check_converge <- function(A, V, H, G, n, tol=1e-6) {
+check_converge <- function(A, V, H, G, n, k, tol=1e-6) {
   od <- order(-diag(H))
   eigenVal <- diag(H)[od]
   eigenVec=G[, od]
@@ -127,7 +127,7 @@ eigen_KSLE <- function(A, k, max_iter=10000) {
   expandedUS <- truncate_and_expand(A, ArnoldiHV$V, ArnoldiHV$r, em, SchurD$H, SchurD$G, m, k)
   HessUS <- Arnoldi_Krylov(expandedUS$U, expandedUS$S, expandedUS$u, expandedUS$b, m, k)
   SchurD <- SchurDecom(HessUS$S, m)
-  converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n)
+  converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n, k)
 
   iter <- 1
   while (iter < max_iter) {
@@ -138,7 +138,7 @@ eigen_KSLE <- function(A, k, max_iter=10000) {
       expandedUS <- truncate_and_expand(A, HessUS$U, HessUS$u, HessUS$b, SchurD$H, SchurD$G, m, k)
       HessUS <- Arnoldi_Krylov(expandedUS$U, expandedUS$S, expandedUS$u, expandedUS$b, m, k)
       SchurD <- SchurDecom(HessUS$S, m)
-      converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n)
+      converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n, k)
     }
   }
   stop('IRAM not convergence!')
