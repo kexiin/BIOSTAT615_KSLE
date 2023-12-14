@@ -1,8 +1,18 @@
-norm2 <- function(x) {
-  return(drop(sqrt(sum(x^2))))
-}
-
-ArnoldiMethod <- function(A, b, V0, H0, r0, n, m, k, First=FALSE) {
+#' A implementation of Arnoldi Decomposition
+#' @param A input matrix, to decompose it into AV = VH + r*t(e)
+#' @param b vector for Krylov-subspace
+#' @param V0 start V
+#' @param H0 start H
+#' @param r0 start r
+#' @param n dimension of A
+#' @param m dimension of H
+#' @param k need k largest eigenvalues
+#' @param First whether it is the first Arnoldi, before any restart
+#' @return A list containing H, V and r
+#' @import Rcpp
+#' @export
+#'
+Arnoldi <- function(A, b, V0, H0, r0, n, m, k, First=FALSE) {
   # Hessenberg Decomposition AV = VH, where VV' = I, H is upper Hessenberg
   V <- matrix(0, nrow = n, ncol = m + 1)
   H <- matrix(0, nrow = m + 1, ncol = m)
@@ -23,97 +33,53 @@ ArnoldiMethod <- function(A, b, V0, H0, r0, n, m, k, First=FALSE) {
   }
 
   # Arnoldi Algorithm
-  for (j in start:(m+1)) {
-    Vj <- A %*% V[, j-1]
-    for (i in max(1, j-2):(j-1)) {
-      H[i, j-1] <- t(V[, i]) %*% Vj
-      Vj <- Vj - H[i, j-1] * V[, i]
-    }
-    H[j, j-1] <- norm2(Vj)
-    V[, j] <- Vj / H[j, j-1]
-  }
-  r <- V[, m+1] * H[m+1, m]
-  V <- V[, -(m+1)]
-  H <- H[-(m+1), ]
-  for (i in 3:m) { H[i, 1:(i-2)] <- 0 }
-  for (i in 1:(m-2)) { H[i, (i+2):m] <- 0 }
-  # A %*% V - V %*% H - r %*% t(e)
-
-  return(list(H=H, V=V, r=r))
+  ArnoldiOut <- Arnoldi_Cpp(A, V, H, start, n, m)
+  # A %*% ArnoldiOut$V - ArnoldiOut$V %*% ArnoldiOut$H - ArnoldiOut$r %*% t(c(rep(0,m-1),1))
+  return(list(H=ArnoldiOut$H, V=ArnoldiOut$V, r=ArnoldiOut$r))
 }
 
+
+#' A implementation of checking convergence of Arnoldi Decomposition
+#' @param A input matrix, to decompose it into AV = VH + r*t(e)
+#' @param b vector for Krylov-subspace
+#' @param V0 start V
+#' @param H0 start H
+#' @param r0 start r
+#' @param n dimension of A
+#' @param m dimension of H
+#' @param k need k largest eigenvalues
+#' @param First whether it is the first Arnoldi, before any restart
+#' @param tol tolerance of convergence
+#' @return A list containing convergence, H, V, r or eigenpairs
+#'
 Arnoldi_converge <- function(A, b, V0, H0, r0, n, m, k, First=FALSE, tol=1e-6) {
-  ArnoldiVH <- ArnoldiMethod(A, b, V0, H0, r0, n, m, k, First)
+  ArnoldiVH <- Arnoldi(A, b, V0, H0, r0, n, m, k, First)
   H <- ArnoldiVH$H
   V <- ArnoldiVH$V
   r <- ArnoldiVH$r
 
   # Solve the eigenpairs of Hessenberg Matrix H
-  eigenpairsH <- shiftedQR(H, m)
+  SchurH <- SchurDecom(H)
   # Ritz Vector conditions for termination
-  Ritz <- A %*% V %*% eigenpairsH$eigenVec - t(eigenpairsH$eigenVal * t(V %*% eigenpairsH$eigenVec))
+  Ritz <- A %*% V %*% SchurH$Q - t(diag(SchurH$T) * t(V %*% SchurH$Q))
   if (max(apply(Ritz[, 1:k], 2, norm2)) < tol*n) {
-    return(list(convergence=TRUE, eigenVal=eigenpairsH$eigenVal, eigenVec=V %*% eigenpairsH$eigenVec))
+    return(list(convergence=TRUE, eigenVal=diag(SchurH$T), eigenVec=V %*% SchurH$Q))
   } else {
-    return(list(convergence=FALSE, eigenVal=eigenpairsH$eigenVal, H=H, V=V, r=r, ritz=Ritz[,1:k]))
+    return(list(convergence=FALSE, eigenVal=diag(SchurH$T), H=H, V=V, r=r))
   }
 }
 
 
-GivensRotation <- function(H1, sigma, m) {
-  H2 <- H1 - sigma * diag(m)
-  G <- diag(m)
-  for (i in 1:(m-1)) {
-    r <- sqrt((H2[i, i])^2 + (H2[i + 1, i])^2)
-    c <- H2[i, i] / r
-    s <- H2[i + 1, i] / r
-    Gi <- diag(m)
-    Gi[i:(i+1), i:(i+1)] <- matrix(c(c, -s, s, c), 2, 2)
-    H2 <- Gi %*% H2
-    G <- Gi %*% G
-  }
-  return(list(H_new=H2 %*% t(G) + sigma * diag(m), G=G))
-}
-
-shiftedQR <- function(H, m, tol=1e-6, tol0=1e-14, max_iter=10000, check='weak') {
-  # initialize
-  Hlast <- diag(m)
-  H1 <- H
-  iter <- 0
-  G1 <- diag(m)
-  changeH1 <- ifelse(check=='weak', ((norm2(diag(H1) - diag(Hlast))) > tol),
-                     ((norm2(H1 - Hlast) > tol*1e3) | ((norm2(diag(H1) - diag(Hlast))) > tol)))
-  # changeH1 <- ((norm2(diag(H1) - diag(Hlast))) > tol)
-
-  # H = G1 %*% H1 %*% t(G1), where H1 is upper tri, G1'G1=I
-  while (changeH1) {
-    iter <- iter + 1
-    Hlast <- H1
-    if (iter > max_iter) {
-      stop('Shifted QR not convergence!')
-    }
-
-    # Wilkinson shift
-    non_zero <- c(which(abs(diag(H1[-1, ])) > tol0))
-    shift_m <- ifelse(length(non_zero) > 0, non_zero[length(non_zero)] + 1, m)
-    eta <- (H1[shift_m-1, shift_m-1] - H1[shift_m, shift_m]) / 2
-    sigma <- H1[shift_m, shift_m] + eta - sign(eta) * sqrt(eta^2 + (H1[shift_m-1,shift_m])^2)
-    # sigma <- H1[m, m]
-
-    # Givens rotation
-    qrH <- GivensRotation(H1, sigma, m)
-    H1 <- qrH$H_new
-    G1 <- G1 %*% t(qrH$G)
-    changeH1 <- ifelse(check=='weak', ((norm2(diag(H1) - diag(Hlast))) > tol),
-                       ((norm2(H1 - Hlast) > tol*1e3) | ((norm2(diag(H1) - diag(Hlast))) > tol)))
-    # changeH1 <- ((norm2(diag(H1) - diag(Hlast))) > tol)
-  }
-
-  od <- order(-diag(H1))
-  eigenVal <- diag(H1)[od]
-  return(list(eigenVal=eigenVal, eigenVec=G1[, od], H=H1, G=G1))
-}
-
+#' A implementation of Implicitly Restart Arnoldi
+#' @param H Hessenberg matrix, H of AV = VH + r*t(e)
+#' @param V orthogonal matrix, V of AV = VH + r*t(e)
+#' @param r vector, r of AV = VH + r*t(e)
+#' @param eigenVal eigenvalues of H
+#' @param k need k largest eigenvalues
+#' @param m dimension of H
+#' @return A list containing H, V and r after restarting
+#' @import Rcpp
+#'
 ImplicitlyRestart <- function(H, V, r, eigenVal, k, m) {
   H1 <- H
   V1 <- V
@@ -122,7 +88,7 @@ ImplicitlyRestart <- function(H, V, r, eigenVal, k, m) {
   # restart by removing unwanted eigenvalues
   for (i in (k+1):m) {
     sigma <- eigenVal[i]
-    qrH <- GivensRotation(H1, sigma, m)
+    qrH <- GivensRotation_Cpp(H1, sigma, m)
     H1 <- qrH$H_new
     for (i in 3:m) { H1[i, 1:(i-2)] <- 0 }
     for (i in 1:(m-2)) { H1[i, (i+2):m] <- 0 }
@@ -130,12 +96,19 @@ ImplicitlyRestart <- function(H, V, r, eigenVal, k, m) {
     G <- G %*% t(qrH$G)
   }
   r1 <- V1[, k+1] * H1[k+1, k] + r * G[m, k]
-  # A %*% V1[, 1:k] - V1[,1:k] %*% H1[1:k, 1:k] - r1 %*% t(e)
+  # A %*% V1[, 1:k] - V1[,1:k] %*% H1[1:k, 1:k] - r1 %*% t(c(rep(0, k-1),1))
 
   return(list(H=H1[1:k, 1:k], V=V1[, 1:k], r=r1))
 }
 
 
+#' A implementation IRAM for EVD
+#' @param A input matrix
+#' @param k need k largest eigenvalues
+#' @param max_iter maximum of iteration number
+#' @return A list containing eigenvalues and eigenvectors
+#' @export
+#'
 eigen_IRAM <- function(A, k, max_iter=10000) {
   # check whether A is a square matrix
   if (nrow(A) != ncol(A)) { stop('Input must be a matrix!') }
@@ -149,7 +122,7 @@ eigen_IRAM <- function(A, k, max_iter=10000) {
   iter <- 0
   while (iter < max_iter) {
     if (eigenH$convergence == TRUE) {
-      return(list(eigenVal=eigenH$eigenVal[1:k], eigenVec=eigenH$eigenVec[, 1:k]))
+      return(list(eigenVal=eigenH$eigenVal[1:k], eigenVec=eigenH$eigenVec[, 1:k], iter=iter))
     } else {
       iter <- iter + 1
       newVHr <- ImplicitlyRestart(eigenH$H, eigenH$V, eigenH$r, eigenH$eigenVal, k, m)

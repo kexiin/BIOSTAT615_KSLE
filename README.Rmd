@@ -16,9 +16,8 @@ knitr::opts_chunk$set(
 # KSLE
 
 <!-- badges: start -->
+[![Author](https://img.shields.io/badge/Author-KexinLi-red.svg "Author")](https://kexiin.gitee.io "Author")
 <!-- badges: end -->
-
-The goal of KSLE is to ...
 
 ## Installation
 
@@ -37,22 +36,29 @@ This is a basic example which shows you how to solve a common problem:
 library(KSLE)
 
 set.seed(123)
-n <- 1000  # matrix size
+m <- 500  # matrix size
+n <- 50
+k <- 2    # number of eigenvalues to calculate
 # Some random data
-M <- matrix(rnorm(n^2), n)
+M <- matrix(rnorm(n * m), n, m)
 # Make it symmetric
 A <- crossprod(M)
 ```
 
-```{r}
-k <- 5    # number of eigenvalues to calculate
-system.time({eigen(A)})
-system.time({eigen_IRAM(A, k)})
-system.time({eigen_KSLE(A, k)})
+```{r, message=FALSE}
+result_eigen <- bench::mark(
+  round(eigen(A, symmetric = TRUE)$values[1:k], 0),
+  round(eigen_IRAM(A, k)$eigenVal, 0),
+  round(eigen_KSLE(A, k)$eigenVal, 0)
+)
+result_eigen
 ```
 
-```{r}
-k <- 10    # number of eigenvalues to calculate
-system.time({eigen_IRAM(A, k)})
-system.time({eigen_KSLE(A, k)})
+```{r, message=FALSE}
+result_SVD <- bench::mark(
+  round(svd(M)$d[1:k], 0),
+  round(truncatedSVD(M, k, method = "IRAM")$D, 0),
+  round(truncatedSVD(M, k, method = "KSLE")$D, 0),
+)
+result_SVD
 ```

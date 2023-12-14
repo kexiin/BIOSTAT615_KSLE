@@ -1,110 +1,65 @@
-# library(control)
-
-SchurDecom <- function(H, m) {
-  qrH <- shiftedQR(H, m, check='strong')
-  H1 <- qrH$H
-  G1 <- qrH$G
-
-  # H = G1 %*% H1 %*% t(G1)
-  return(list(H=H1, G=G1))
-}
-
-truncate_and_expand <- function(A, V, u, b1, Tm, Sm, m, k, tol0=1e-8) {
-  for (l in 2:m) { Tm[l, 1:(l-1)][abs(Tm[l, 1:(l-1)]) < tol0] <- 0 }
-  for (l in 1:(m-1)) { Tm[l, (l+1):m][abs(Tm[l, (l+1):m]) < tol0] <- 0 }
-
-  # reorder eigenvalues of Schur form!
-  eigen_est <- diag(Tm)
-  non_zero <- c(which(diag(Tm[-1, ]) != 0))
-  for (l in 1:length(non_zero)) {
-    eigen_mean <- (eigen_est[non_zero[l]] + eigen_est[non_zero[l] + 1]) / 2
-    eigen_est[non_zero[l]] <- eigen_mean
-    eigen_est[non_zero[l] + 1] <- eigen_mean
+#' A implementation of reducing the the Krylov form S to Hessenberg form by Householder matrix
+#' @param U n*m orthogonal matrix, U of AU = US + ub
+#' @param S m*m matrix, S of AU = US + ub
+#' @param u n*1 matrix, u of AU = US + ub
+#' @param b 1*m matrix, b of AU = US + ub
+#' @param m dimension of S
+#' @param k need k largest eigenvalues
+#' @param tol0 tolerance for setting small numbers to 0
+#' @return A list containing U, S, u and b, where S is tridiagonal matrix
+#' @import Rcpp
+#'
+Arnoldi_Krylov <- function(U, S, u, b, m, k, tol0=1e-8) {
+  start <- 1
+  while ((length(which(S[(start+1):m, start] != 0)) == 0) & (start < k)) { start <- start + 1 }
+  if (start == k) {
+    return(list(U=U, S=S, u=u, b=b))
   }
-  od <- order(-eigen_est)
-  while (od[k] %in% non_zero) {
-    eigen_est[od[k]] <- 0
-    eigen_est[od[k] + 1] <- 0
-    od <- order(-eigen_est)
-  }
-  od <- order(od)
-  orderedT <- ordschur(Sm, Tm, od)
-  # Sm %*% Tm %*% t(Sm) - (orderedT$U) %*% orderedT$S %*% t(orderedT$U)
-  Tm <- orderedT$S
-  Sm <- orderedT$U
 
-  # truncate to a Krylov-Schur decomposition of order k
-  V11 <- (V %*% Sm)[,1:k]
-  T11 <- Tm[1:k, 1:k]
-  u11 <- u / norm2(u)
-  b11 <- (b1 %*% Sm)[1:k] * norm2(u)
-
-  # extend to a Krylov decomposition of order m
-  Unew <- cbind(V11, u11)
-  Snew <- rbind(T11, b11)
-  # A %*% Unew[,-(k+1)] - Unew %*% Snew
-
-  for (j in (k+2):(m+1)) {
-    v <- A %*% Unew[, j - 1]
-    w <- t(Unew) %*% v
-    v <- v - Unew %*% w
-    v_norm2 <- norm2(v)
-    Unew <- cbind(Unew, v / v_norm2)
-    Snew <- cbind(rbind(Snew, 0), rbind(w, v_norm2))
-  }
-  for (l in (1:(m-2))) { Snew[l, max(k+2, l+2):m] <- 0 }
-  # A %*% Unew[, -(m+1)] - Unew %*% Snew
-  # A %*% Unew[, -(m+1)] - Unew[, -(m+1)] %*% Snew[-(m+1), ] - Unew[, m+1] %*% t(Snew[m+1, ])
-  return(list(U=Unew[, -(m+1)], S=Snew[-(m+1), ], u=Unew[, m+1], b=Snew[m+1, ]))
-  # A %*% U = U %*% S - u %*% t(b)
-}
-
-Arnoldi_Krylov <- function(U, S, u, b, m, k) {
-  # Reduce the the Krylov Decomposition S to Hessenberg form by Householder matrix
-
-  # the first column
-  if (length(which(S[2:m, 1] != 0)) == 1) {
+  # the start column
+  if (length(which(S[(start+1):m, start] != 0)) == 1) {
     V <- diag(m)
-    V <- rbind(V[1, ], V[3:(k+1), ], V[2, ], V[(k+2):m,])
+    V <- rbind(V[1:start, ], V[(start+2):(k+1), ], V[(start+1), ], V[(k+2):m,])
     S1 <- t(V) %*% S %*% V
   } else {
-    non_zero_indice <- (which(S[2:m, 1] != 0))[1]
-    em <- rep(0, m-1)
+    non_zero_indice <- (which(S[(start+1):m, start] != 0))[1]
+    em <- rep(0, m-start)
     em[non_zero_indice] <- 1
-    v <- S[2:m, 1] - sign(S[non_zero_indice + 1, 1]) * norm2(S[2:m, 1]) * em
+    v <- S[(start+1):m, start] - sign(S[non_zero_indice + 1, start]) * norm2(S[(start+1):m, start]) * em
     V <- diag(m)
-    V[2:m, 2:m] <- diag(m-1) - 2 * v %*% t(v) / norm2(v)^2
+    V[(start+1):m, (start+1):m] <- diag(m-start) - 2 * v %*% t(v) / norm2(v)^2
     S1 <- t(V) %*% S %*% V
-    S1[1, 3:m] <- 0
-    S1[3:m, 1] <- 0
+    S1[start, min(start+2, m):m] <- 0
+    S1[min(start+2, m):m, start] <- 0
   }
 
   # other columns
-  for (j in 2:(m-2)) {
-    v <- S1[(j+1):m, j]
-    sigma <- sign(S1[j+1, j]) * norm2(v)
-    v <- v + sigma * c(1, rep(0, m-j-1))
-    V1 <- diag(m)
-    V1[(j+1):m, (j+1):m] <- diag(m-j) - 2 * v %*% t(v) / norm2(v)^2
-    S1 <- t(V1) %*% S1 %*% V1
-    S1[j, min(j+2, m):m] <- 0
-    S1[min(j+2, m):m, j] <- 0
-    V <- V %*% V1
-  }
+  Householder_to_Hess <- HouseholderTransform_Cpp(start, S1, V)
 
-  U1 <- U %*% V
-  b1 <- t(b) %*% V
+  U1 <- U %*% Householder_to_Hess$V
+  b1 <- b %*% Householder_to_Hess$V
   # A %*% U1 - U1 %*% S1 - u %*% b1
-
-  return(list(U=U1, S=S1, u=u, b=b1))
+  return(list(U=U1, S=Householder_to_Hess$S1, u=u, b=b1))
 }
 
+
+#' A implementation of checking convergence of Krylov-Schur Decomposition
+#' @param A input matrix
+#' @param V the orthogonal matrix of AV = VS + ub
+#' @param H the diagonal matrix of Schur decomposition of S
+#' @param G the orthogonal matrix of Schur decomposition of S
+#' @param n dimension of A
+#' @param k need k largest eigenvalues
+#' @param tol tolerance of convergence
+#' @return A list containing convergence and eigenpairs
+#'
 check_converge <- function(A, V, H, G, n, k, tol=1e-6) {
   od <- order(-diag(H))
   eigenVal <- diag(H)[od]
-  eigenVec=G[, od]
+  eigenVec <- G[, od]
 
   Ritz <- A %*% V %*% eigenVec - t(eigenVal * t(V %*% eigenVec))
+  # print(max(apply(Ritz[, 1:k], 2, norm2)))
   if (max(apply(Ritz[, 1:k], 2, norm2)) < tol*n) {
     return(list(convergence=TRUE, eigenVal=eigenVal, eigenVec=V %*% eigenVec))
   } else {
@@ -112,34 +67,44 @@ check_converge <- function(A, V, H, G, n, k, tol=1e-6) {
   }
 }
 
+
+#' A implementation Krylov-Schur Algorithm for EVD
+#' @param A input matrix
+#' @param k need k largest eigenvalues
+#' @param max_iter maximum of iteration number
+#' @return A list containing eigenvalues and eigenvectors
+#' @import Rcpp
+#' @export
+#'
 eigen_KSLE <- function(A, k, max_iter=10000) {
   # check whether A is a square matrix
   if (nrow(A) != ncol(A)) { stop('Input must be a matrix!') }
   n <- nrow(A)
   m <- min(2 * k, n)
   # randomly initialize b
-  b <- runif(n, -1, 1)
+  bvec <- runif(n, -1, 1)
 
-  ArnoldiHV <- ArnoldiMethod(A, b, V0=NULL, H0=NULL, r0=NULL, n, m, k, First=TRUE)
-  SchurD <- SchurDecom(ArnoldiHV$H, m)
-  em <- rep(0, m)
-  em[m] <- 1
-  expandedUS <- truncate_and_expand(A, ArnoldiHV$V, ArnoldiHV$r, em, SchurD$H, SchurD$G, m, k)
+  # start with Arnoldi decomposition to get initial Krylov decomposition
+  ArnoldiHV <- Arnoldi(A, bvec, V0=NULL, H0=NULL, r0=NULL, n, m, k, First=TRUE)
+  SchurD <- SchurDecom(ArnoldiHV$H)
+  em <- c(rep(0, m-1), 1)
+  expandedUS <- truncate_and_expand_Cpp(A, ArnoldiHV$V, ArnoldiHV$r, em, SchurD$T, SchurD$Q, n, m, k)
   HessUS <- Arnoldi_Krylov(expandedUS$U, expandedUS$S, expandedUS$u, expandedUS$b, m, k)
-  SchurD <- SchurDecom(HessUS$S, m)
-  converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n, k)
+  SchurD <- SchurDecom(HessUS$S)
+  converge <- check_converge(A, HessUS$U, SchurD$T, SchurD$Q, n, k)
 
   iter <- 1
   while (iter < max_iter) {
     if (converge$convergence == TRUE) {
-      return(list(eigenVal=converge$eigenVal[1:k], eigenVec=converge$eigenVec[, 1:k]))
+      return(list(eigenVal=converge$eigenVal[1:k], eigenVec=converge$eigenVec[, 1:k], iter=iter))
     } else {
       iter <- iter + 1
-      expandedUS <- truncate_and_expand(A, HessUS$U, HessUS$u, HessUS$b, SchurD$H, SchurD$G, m, k)
+      expandedUS <- truncate_and_expand_Cpp(A, HessUS$U, HessUS$u, HessUS$b, SchurD$T, SchurD$Q, n, m, k)
       HessUS <- Arnoldi_Krylov(expandedUS$U, expandedUS$S, expandedUS$u, expandedUS$b, m, k)
-      SchurD <- SchurDecom(HessUS$S, m)
-      converge <- check_converge(A, HessUS$U, SchurD$H, SchurD$G, n, k)
+      SchurD <- SchurDecom(HessUS$S)
+      converge <- check_converge(A, HessUS$U, SchurD$T, SchurD$Q, n, k)
     }
   }
-  stop('IRAM not convergence!')
+  stop('KSLE not convergence!')
 }
+

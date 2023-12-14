@@ -20,12 +20,12 @@ library(KSLE)
 
 ```{r}
 set.seed(123)
-n = 10  # matrix size
-k = 3    # number of eigenvalues to calculate
+n <- 500  # matrix size
+k <- 3    # number of eigenvalues to calculate
 # Some random data
-M = matrix(rnorm(n^2), n)
+M <- matrix(rnorm(n^2), n)
 # Make it symmetric
-A = crossprod(M)
+A <- crossprod(M)
 ```
 
 To use the function `eigen_IRAM` and `eigen_KSLE`:
