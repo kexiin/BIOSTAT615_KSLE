@@ -11,7 +11,7 @@ List Arnoldi_Cpp (const Eigen::MatrixXd& A, Eigen::MatrixXd V, Eigen::MatrixXd H
 
   for (int j = start-1; j < m+1; j++) {
     Eigen::VectorXd Vj = A * V.col(j - 1);
-    for (int i = std::max(0, j-2); i <= j-1; i++) {
+    for (int i = 0; i <= j-1; i++) {
       H(i, j - 1) = V.col(i).dot(Vj);
       Vj -= H(i, j - 1) * V.col(i);
     }

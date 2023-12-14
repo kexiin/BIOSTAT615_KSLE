@@ -30,8 +30,6 @@ devtools::install_github("kexiin/BIOSTAT615_KSLE")
 
 ## Example
 
-This is a basic example which shows you how to solve a common problem:
-
 ```{r example}
 library(KSLE)
 
@@ -45,6 +43,8 @@ M <- matrix(rnorm(n * m), n, m)
 A <- crossprod(M)
 ```
 
+Example on EVD:
+
 ```{r, message=FALSE}
 result_eigen <- bench::mark(
   round(eigen(A, symmetric = TRUE)$values[1:k], 0),
@@ -53,6 +53,8 @@ result_eigen <- bench::mark(
 )
 result_eigen
 ```
+
+Example on SVD:
 
 ```{r, message=FALSE}
 result_SVD <- bench::mark(

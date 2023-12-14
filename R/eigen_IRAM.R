@@ -65,7 +65,7 @@ Arnoldi_converge <- function(A, b, V0, H0, r0, n, m, k, First=FALSE, tol=1e-6) {
   if (max(apply(Ritz[, 1:k], 2, norm2)) < tol*n) {
     return(list(convergence=TRUE, eigenVal=diag(SchurH$T), eigenVec=V %*% SchurH$Q))
   } else {
-    return(list(convergence=FALSE, eigenVal=diag(SchurH$T), H=H, V=V, r=r))
+    return(list(convergence=FALSE, eigenVal=diag(SchurH$T), H=H, V=V, r=r, r=r))
   }
 }
 
